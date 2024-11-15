@@ -12,9 +12,6 @@ interface ImageUploadState {
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
 }
-
-
-
 export const handleUpload = createAsyncThunk<
   {
     uploadUrl: string;

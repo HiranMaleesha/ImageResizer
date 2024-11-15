@@ -32,6 +32,7 @@ function Page() {
       event.target.value === "" ? null : parseInt(event.target.value, 10);
     setHeight(newHeight);
   };
+  console.log(selectedFile)
 
   useEffect(() => {
     const initializeSocket = async () => {

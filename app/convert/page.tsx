@@ -5,11 +5,6 @@ import "../globals.css";
 import Header from "../../components/layout/header";
 import io, { Socket } from "socket.io-client";
 import { useRouter } from "next/navigation";
-import {
-  handleUpload,
-  setWidth,
-  setHeight,
-} from "@/app/store/imageUploadSlice";
 import { useSelector, useDispatch } from "react-redux";
 import { selectImageUpload } from "@/app/store/imageUploadSlice";
 
@@ -18,37 +13,24 @@ export var selectedFile: { file: File | undefined } = { file: undefined };
 function Page() {
   const [selected, setSelected] = useState("dimensions");
   const [percentage, setPercentage] = useState(100);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const [FinalUrl, setFinalUrl] = useState<string | null>(null);
   const router = useRouter();
-  const [unit, setUnit] = useState("Pixels");
-  const dispatch = useDispatch();
-  const { uploadUrl, signature, selectedFile, jobId, width, height } =
-    useSelector(selectImageUpload);
+  const { uploadUrl, signature, selectedFile } = useSelector(selectImageUpload);
+  const [width, setWidth] = useState<number | null>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const [ jobId, setJobId ] =  useState<string | null>(null);
 
-  console.log(selectedFile);
-
-  useEffect(() => {
-    if (selectedFile) {
-      const img = new Image();
-      img.onload = () => {
-        dispatch(setWidth(img.naturalWidth));
-        dispatch(setHeight(img.naturalHeight));
-      };
-      img.src = URL.createObjectURL(selectedFile);
-    }
-  }, [selectedFile, dispatch]);
-
-  const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newWidth = Number(e.target.value);
-    dispatch(setWidth(newWidth));
+  const handleWidthChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newWidth =
+      event.target.value === "" ? null : parseInt(event.target.value, 10);
+    setWidth(newWidth);
   };
 
-  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newHeight = Number(e.target.value);
-    dispatch(setHeight(newHeight));
+  const handleHeightChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newHeight =
+      event.target.value === "" ? null : parseInt(event.target.value, 10);
+    setHeight(newHeight);
   };
 
   useEffect(() => {
@@ -58,6 +40,7 @@ function Page() {
           "https://dev-api.freeconvert.com/v1/account/guest"
         );
         const fetchedToken = await tokenResponse.text();
+        console.log(fetchedToken);
         tokenRef.current = fetchedToken;
 
         socketRef.current = io("https://dev-notification.freeconvert.com/", {
@@ -79,7 +62,7 @@ function Page() {
           handleJobFailed(data.Job);
         });
 
-        socketRef.current.on("jov_start", (data: any) => {
+        socketRef.current.on("job_start", (data: any) => {
           console.log("job started", data);
         });
 
@@ -110,34 +93,78 @@ function Page() {
     });
   };
 
-  const uploadFileToJob = async (uploadUrl: string, signature: string) => {
-    if (!uploadUrl || !signature || !selectedFile) return;
+  const uploadFileToJob = async () => {
+    if (!selectedFile) return;
 
-    console.log(selectedFile);
+    try {
 
+      const response = await fetch(
+        "https://dev-api.freeconvert.com/v1/process/jobs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer api_dev_18c56fe7e4395cd9fb7f1ee3b8329e300bd71596130fca196c8b0806ecc3ed34.61d077db9a791d0011cd36c1.6734849f6d3fcae9e29a3bce`,
+          },
+          body: JSON.stringify({
+            tasks: {
+              "import-1": { operation: "import/upload" },
+              "convert-1": {
+                operation: "convert",
+                input: "import-1",
+                input_format: "jpg",
+                output_format: "jpg",
+                options: {
+                  resize_type_image: "dimension",
+                  image_custom_width: width,
+                  image_custom_height: height,
+                  jpg_convert_compress_method: "no_change",
+                  "auto-orient": true,
+                  strip: true,
+                },
+              },
+              "export-1": { operation: "export/url", input: ["convert-1"] },
+            },
+          }),
+        }
+      );
+  
+      const jsonResponse = await response.json();
+  
+      if (!response.ok) {
+        console.error("Failed to get upload details:", jsonResponse.message);
+        return;
+      }
+  
+      const uploadUrl = jsonResponse.tasks[0].result.form.url;
+      const signature = jsonResponse.tasks[0].result.form.parameters.signature;
+      console.log(jsonResponse)
+      const jobId = jsonResponse.id;
+      setJobId(jobId)
+
+      
     const formData = new FormData();
     formData.append("file", selectedFile);
     formData.append("signature", signature);
 
-    try {
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        body: formData,
-      });
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+    });
 
-      const jsonResponse = await response.json();
-      if (response.ok) {
-        console.log("File uploaded successfully:", jsonResponse);
-        alert("File uploaded successfully");
-      } else {
-        console.error("File upload failed:", response.statusText);
-        alert("File upload failed");
-      }
-    } catch (error) {
-      console.error("Error during file upload:", error);
-      alert("An error occurred during file upload");
+    const uploadJson = await uploadResponse.json();
+    if (uploadResponse.ok) {
+      console.log("File uploaded successfully:", uploadJson);
+      alert("File uploaded successfully");
+    } else {
+      console.error("File upload failed:", uploadResponse.statusText);
+      alert("File upload failed");
     }
-  };
+  } catch (error) {
+    console.error("Error during process:", error);
+    alert("An error occurred during the process");
+  }
+};
 
   const fetchJobDetails = async (jobId: string) => {
     if (!tokenRef.current) return;
@@ -148,7 +175,7 @@ function Page() {
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${tokenRef.current}`,
+            Authorization: `Bearer api_dev_18c56fe7e4395cd9fb7f1ee3b8329e300bd71596130fca196c8b0806ecc3ed34.61d077db9a791d0011cd36c1.6734849f6d3fcae9e29a3bce`,
           },
         }
       );
@@ -159,7 +186,6 @@ function Page() {
 
         const ResultURL = jobDetails.tasks[2];
         if (ResultURL && ResultURL.result && ResultURL.result.url) {
-          setFinalUrl(ResultURL.result.url);
           console.log("ResultURL.result:", ResultURL?.result);
           router.push(
             `/download?fileUrl=${encodeURIComponent(ResultURL.result.url)}`
@@ -213,14 +239,14 @@ function Page() {
                 <input
                   id="width"
                   name="width"
-                  value={width?.toString() || ""}
+                  value={width || ""}
                   onChange={handleWidthChange}
                   className="w-full px-2 py-1 border border-gray-300 rounded-xl"
                 />
                 <input
                   id="height"
                   name="height"
-                  value={height?.toString() || ""}
+                  value={height || ""}
                   onChange={handleHeightChange}
                   className="w-full px-2 py-1 border border-gray-300 rounded-xl"
                 />
@@ -290,7 +316,7 @@ function Page() {
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center gap-2"
               onClick={() => {
                 if (uploadUrl && signature) {
-                  uploadFileToJob(uploadUrl, signature)
+                  uploadFileToJob()
                     .then(() => console.log("Upload successful"))
                     .catch((error) => console.error("Upload failed:", error));
                 } else {

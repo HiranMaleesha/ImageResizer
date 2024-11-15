@@ -33,7 +33,7 @@ export function Upload() {
         size: file.size,
         url: URL.createObjectURL(file),
       });
-      await dispatch(handleUpload(file));
+      await dispatch(handleUpload());
     }
   };
 

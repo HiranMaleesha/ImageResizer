@@ -1,3 +1,4 @@
+// imageUploadSlice.ts
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { RootState } from "./store";
 
@@ -7,22 +8,12 @@ interface ImageUploadState {
   selectedFile: File | null;
   previewUrl: string | null;
   jobId: string | null;
-  width: number | null;
-  height: number | null;
+  
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
 }
 
-const getValidDimension = (value: number | null): number => {
-  if (value === null || value <= 0) {
-    return 100;
-  }
-  return value;
-};
 
-interface UploadThunkConfig {
-  state: RootState;
-}
 
 export const handleUpload = createAsyncThunk<
   {
@@ -30,17 +21,16 @@ export const handleUpload = createAsyncThunk<
     signature: string;
     jobId: string;
   },
-  File,
+  void,
   {
     rejectValue: string;
     state: RootState;
   }
 >(
   "imageUpload/handleUpload",
-  async (file: File, { rejectWithValue, getState }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
       const currentState = getState();
-      const { width, height } = currentState.imageUpload;
 
       const tokenResponse = await fetch(
         "https://dev-api.freeconvert.com/v1/account/guest"
@@ -53,7 +43,7 @@ export const handleUpload = createAsyncThunk<
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer api_dev_18c56fe7e4395cd9fb7f1ee3b8329e300bd71596130fca196c8b0806ecc3ed34.61d077db9a791d0011cd36c1.6734849f6d3fcae9e29a3bce`,
           },
           body: JSON.stringify({
             tasks: {
@@ -65,8 +55,8 @@ export const handleUpload = createAsyncThunk<
                 output_format: "jpg",
                 options: {
                   resize_type_image: "dimension",
-                  image_custom_width: getValidDimension(width),
-                  image_custom_height: getValidDimension(height),
+                  // image_custom_width: getValidDimension(width),
+                  // image_custom_height: getValidDimension(height),
                   jpg_convert_compress_method: "no_change",
                   "auto-orient": true,
                   strip: true,
@@ -79,12 +69,17 @@ export const handleUpload = createAsyncThunk<
       );
 
       const jsonResponse = await response.json();
+      console.log("Response:", jsonResponse);
 
-      const jobId = jsonResponse.id;
-      const uploadUrl = jsonResponse.tasks[0].result.form.url;
-      const signature = jsonResponse.tasks[0].result.form.parameters.signature;
+      if (!response.ok) {
+        throw new Error(jsonResponse.message || "Upload failed");
+      }
 
-      return { uploadUrl, signature, jobId };
+      return {
+        uploadUrl: jsonResponse.tasks[0].result.form.url,
+        signature: jsonResponse.tasks[0].result.form.parameters.signature,
+        jobId: jsonResponse.id,
+      };
     } catch (error) {
       if (error instanceof Error) {
         return rejectWithValue(error.message);
@@ -93,6 +88,7 @@ export const handleUpload = createAsyncThunk<
     }
   }
 );
+
 
 const imageUploadSlice = createSlice({
   name: "imageUpload",
@@ -117,16 +113,7 @@ const imageUploadSlice = createSlice({
         ? URL.createObjectURL(action.payload)
         : null;
     },
-    setWidth: (state, action) => {
-      state.width = action.payload;
-    },
-    setHeight: (state, action) => {
-      state.height = action.payload;
-    },
-    setDimensions: (state, action) => {
-      state.width = action.payload.width;
-      state.height = action.payload.height;
-    },
+    
   },
   extraReducers: (builder) => {
     builder
@@ -147,7 +134,8 @@ const imageUploadSlice = createSlice({
   },
 });
 
-export const { setSelectedFile, setWidth, setHeight } =
-  imageUploadSlice.actions;
+export const {
+  setSelectedFile,
+} = imageUploadSlice.actions;
 export const selectImageUpload = (state: RootState) => state.imageUpload;
 export default imageUploadSlice.reducer;
